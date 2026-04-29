@@ -1,0 +1,21 @@
+port: 4000
+
+providers:
+  anthropic:
+    base_url: https://api.anthropic.com
+    # auth is forwarded from Claude Code client as-is (OAuth Bearer token)
+
+  xiaomi:
+    base_url: https://token-plan-sgp.xiaomimimo.com/anthropic
+    api_key: YOUR_API_KEY_HERE
+    strip_oauth_beta: true   # removes oauth-2025-04-20 from anthropic-beta
+
+models:
+  # Anthropic — forward as-is
+  claude-opus-4-7:           anthropic
+  claude-sonnet-4-6:         anthropic
+  claude-haiku-4-5-20251001: anthropic
+
+  # Xiaomi — re-route with own api_key
+  mimo-v2.5-pro:             xiaomi
+  mimo-v2.5:                 xiaomi

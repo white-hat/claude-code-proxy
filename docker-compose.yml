@@ -1,0 +1,7 @@
+services:
+  proxy:
+    build: .
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
