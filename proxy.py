@@ -72,6 +72,7 @@ def _load_config() -> dict:
             raise ValueError(f"Model '{model_name}' maps to unknown provider '{provider}'")
         model_map[model_name] = provider
     cfg["_model_map"] = model_map
+    cfg["_aliases"] = cfg.get("aliases") or {}
     cfg["_default_provider"] = next(iter(providers))
     return cfg
 
@@ -187,6 +188,11 @@ async def proxy(request: Request, path: str):
         try:
             data = json.loads(body)
             model = data.get("model", "unknown")
+            resolved = _cfg["_aliases"].get(model, model)
+            if resolved != model:
+                data["model"] = resolved
+                body = json.dumps(data).encode()
+                model = resolved
             if model in _cfg["_model_map"]:
                 provider_name = _cfg["_model_map"][model]
         except (ValueError, AttributeError):

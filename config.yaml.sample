@@ -10,6 +10,9 @@ providers:
     api_key: YOUR_API_KEY_HERE
     strip_oauth_beta: true   # removes oauth-2025-04-20 from anthropic-beta
 
+aliases:
+  mimo-pro: mimo-v2.5-pro
+
 models:
   # Anthropic — forward as-is
   claude-opus-4-7:           anthropic

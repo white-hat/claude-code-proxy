@@ -51,6 +51,9 @@ providers:
     api_key: YOUR_API_KEY_HERE
     strip_oauth_beta: true
 
+aliases:
+  mimo-pro: mimo-v2.5-pro
+
 models:
   claude-opus-4-7:           anthropic
   claude-sonnet-4-6:         anthropic
@@ -70,6 +73,18 @@ models:
 ### Models
 
 Map model names to provider keys. Unknown models fall through to the first provider.
+
+### Aliases
+
+Short names that resolve to real model IDs before routing. Useful in Claude Code's `/model` picker so you don't have to type full model names.
+
+```yaml
+aliases:
+  mimo-pro: mimo-v2.5-pro
+  opus: claude-opus-4-7
+```
+
+Now you can use `/model mimo-pro` in Claude Code — the proxy rewrites it to `mimo-v2.5-pro` before sending upstream.
 
 ## Switching models in Claude Code
 
