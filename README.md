@@ -89,10 +89,22 @@ ANTHROPIC_MODEL=mimo-v2.5-pro claude
 
 ## Logging
 
+Each request logs a summary line on completion:
+
 ```
-14:30:01 >>> anthropic | claude-sonnet-4-6 | /v1/messages
-14:30:01 >>> anthropic | claude-sonnet-4-6 | streaming...
-14:30:04 <<< anthropic | claude-sonnet-4-6 | in=44032 | out=85 | cache_hit=44032
+13:05:14 >>> anthropic | claude-sonnet-4-6 | streaming...
+13:05:14 <<< anthropic | claude-sonnet-4-6 | in=3 | out=5 | cache_create=15 | cache_hit=111006 | stop=end_turn | tier=standard
+```
+
+Fields: `in`, `out` (tokens), `cache_create`, `cache_hit`, `stop` (stop reason: `end_turn`, `tool_use`, `max_tokens`), `tier` (service tier), `geo` (inference region, if available).
+
+### Request/response dump
+
+Pass `--dump` to log raw requests and SSE responses to a file (default: `dump.log`):
+
+```bash
+uv run proxy.py --dump
+uv run proxy.py --dump my.log
 ```
 
 ## Limitations

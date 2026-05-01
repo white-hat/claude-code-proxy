@@ -6,6 +6,7 @@
 import json
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -20,12 +21,31 @@ _HOP_BY_HOP = {
     "transfer-encoding",
     "connection",
     "keep-alive",
+    "accept-encoding",
 }
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
 )
 log = logging.getLogger("proxy")
+
+_dump_file: Path | None = None
+
+
+def _dump(request: Request, body: bytes, status: int) -> None:
+    assert _dump_file is not None
+    with _dump_file.open("a") as f:
+        f.write(f"\n{'='*60}\n")
+        f.write(f"[{datetime.now().isoformat(timespec='seconds')}] {request.method} {request.url} → {status}\n")
+        for k, v in request.headers.items():
+            f.write(f"  {k}: {v}\n")
+        if body:
+            f.write("\n")
+            try:
+                f.write(json.dumps(json.loads(body), indent=2))
+            except (ValueError, UnicodeDecodeError):
+                f.write(body.decode(errors="replace"))
+            f.write("\n")
 
 _http: httpx.AsyncClient
 _cfg: dict
@@ -79,6 +99,8 @@ def _headers_for_provider(request: Request, provider_cfg: dict) -> dict:
     if "api_key" in provider_cfg:
         h["authorization"] = f"Bearer {provider_cfg['api_key']}"
 
+    h["accept-encoding"] = "identity"  # prevent upstream compression; proxy parses SSE as plain text
+
     if provider_cfg.get("strip_oauth_beta"):
         beta = h.get("anthropic-beta", "")
         parts = [b.strip() for b in beta.split(",") if b.strip() != "oauth-2025-04-20"]
@@ -90,7 +112,7 @@ def _headers_for_provider(request: Request, provider_cfg: dict) -> dict:
     return h
 
 
-def _format_usage(usage: dict) -> str:
+def _format_usage(usage: dict, meta: dict) -> str:
     parts = []
     if "input_tokens" in usage:
         parts.append(f"in={usage['input_tokens']}")
@@ -100,20 +122,40 @@ def _format_usage(usage: dict) -> str:
         parts.append(f"cache_create={usage['cache_creation_input_tokens']}")
     if usage.get("cache_read_input_tokens"):
         parts.append(f"cache_hit={usage['cache_read_input_tokens']}")
+    if meta.get("stop_reason"):
+        parts.append(f"stop={meta['stop_reason']}")
+    if meta.get("service_tier"):
+        parts.append(f"tier={meta['service_tier']}")
+    if meta.get("inference_geo") and meta["inference_geo"] != "not_available":
+        parts.append(f"geo={meta['inference_geo']}")
     return " | ".join(parts) if parts else ""
 
 
 async def _stream(resp: httpx.Response, model: str, provider_name: str):
     log.info(">>> %s | %s | streaming...", provider_name, model)
-    usage = {}
+    usage: dict = {}
+    meta: dict = {}
+    chunks: list[bytes] = [] if _dump_file else None  # type: ignore[assignment]
     try:
         async for chunk in resp.aiter_raw():
+            if chunks is not None:
+                chunks.append(chunk)
             try:
                 for line in chunk.decode().split("\n"):
                     if line.startswith("data: "):
                         evt = json.loads(line[6:])
-                        if evt.get("type") == "message_delta" and "usage" in evt:
-                            usage = evt["usage"]
+                        t = evt.get("type")
+                        if t == "message_start" and "message" in evt:
+                            msg = evt["message"]
+                            usage.update(msg.get("usage", {}))
+                            for k in ("service_tier", "inference_geo"):
+                                if k in msg:
+                                    meta[k] = msg[k]
+                        elif t == "message_delta":
+                            if "usage" in evt:
+                                usage.update(evt["usage"])
+                            if "delta" in evt and "stop_reason" in evt["delta"]:
+                                meta["stop_reason"] = evt["delta"]["stop_reason"]
             except (ValueError, UnicodeDecodeError):
                 pass
             yield chunk
@@ -121,15 +163,20 @@ async def _stream(resp: httpx.Response, model: str, provider_name: str):
         pass
     finally:
         await resp.aclose()
+        if _dump_file and chunks:
+            with _dump_file.open("a") as f:
+                f.write(f"  --- response {resp.status_code} ---\n")
+                f.write(b"".join(chunks).decode(errors="replace"))
+                f.write("\n")
         log.info(
             "<<< %s | %s | %s",
             provider_name,
             model,
-            _format_usage(usage) or "no usage data",
+            _format_usage(usage, meta) or "no usage data",
         )
 
 
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"])
 async def proxy(request: Request, path: str):
     body = await request.body()
 
@@ -153,6 +200,8 @@ async def proxy(request: Request, path: str):
 
     req = _http.build_request(request.method, target, headers=headers, content=body)
     resp = await _http.send(req, stream=True)
+    if _dump_file:
+        _dump(request, body, resp.status_code)
     resp_headers = {
         k: v for k, v in resp.headers.items() if k.lower() not in _HOP_BY_HOP
     }
@@ -164,7 +213,17 @@ async def proxy(request: Request, path: str):
 
 
 if __name__ == "__main__":
+    import argparse
     import uvicorn
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dump", metavar="FILE", nargs="?", const="dump.log",
+                        help="append all requests/responses to FILE (default: dump.log)")
+    args = parser.parse_args()
+
+    if args.dump:
+        _dump_file = Path(args.dump)
+        log.info("dumping requests to %s", _dump_file)
 
     cfg = _load_config()
     port = cfg.get("port", 4000)

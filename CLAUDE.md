@@ -48,4 +48,5 @@ models:
 
 - Anthropic-compatible endpoints only (not OpenAI `/v1/chat/completions`)
 - Streaming only — Claude Code streams all responses
-- Usage stats (tokens, cache) parsed from `message_delta` SSE events and logged at stream end
+- Usage stats (tokens, cache, stop reason, tier, geo) parsed from `message_start`/`message_delta` SSE events and logged at stream end
+- `accept-encoding: identity` forced upstream to prevent compression and allow SSE parsing
