@@ -40,6 +40,10 @@ providers:
 
 models:
   my-model: my-provider
+  # or with context_window override (for providers that don't implement /v1/models):
+  my-model:
+    provider: my-provider
+    context_window: 1000000
 ```
 
 `strip_oauth_beta: true` is needed when the upstream rejects Claude Code's OAuth token.
@@ -50,3 +54,4 @@ models:
 - Streaming only — Claude Code streams all responses
 - Usage stats (tokens, cache, stop reason, tier, geo) parsed from `message_start`/`message_delta` SSE events and logged at stream end
 - `accept-encoding: identity` forced upstream to prevent compression and allow SSE parsing
+

@@ -53,13 +53,18 @@ providers:
 
 aliases:
   mimo-pro: mimo-v2.5-pro
+  mimo: mimo-v2.5
 
 models:
   claude-opus-4-7:           anthropic
   claude-sonnet-4-6:         anthropic
   claude-haiku-4-5-20251001: anthropic
-  mimo-v2.5-pro:             xiaomi
-  mimo-v2.5:                 xiaomi
+  mimo-v2.5-pro:
+    provider: xiaomi
+    context_window: 1000000
+  mimo-v2.5:
+    provider: xiaomi
+    context_window: 1000000
 ```
 
 ### Provider options
@@ -73,6 +78,15 @@ models:
 ### Models
 
 Map model names to provider keys. Unknown models fall through to the first provider.
+
+Use the expanded form to set a `context_window` override — useful when a provider doesn't implement `GET /v1/models` (the proxy synthesizes the response):
+
+```yaml
+models:
+  mimo-v2.5-pro:
+    provider: xiaomi
+    context_window: 1000000
+```
 
 ### Aliases
 
