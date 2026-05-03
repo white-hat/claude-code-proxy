@@ -5,6 +5,7 @@
 
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +13,7 @@ from pathlib import Path
 import httpx
 import yaml
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 _HOP_BY_HOP = {
@@ -61,21 +62,17 @@ def _load_config() -> dict:
     if not providers:
         raise ValueError("config.yaml has no providers defined")
     model_map = {}
-    context_windows = {}
     for model_name, entry in cfg.get("models", {}).items():
         if isinstance(entry, str):
             provider = entry
         elif isinstance(entry, dict):
             provider = entry["provider"]
-            if "context_window" in entry:
-                context_windows[model_name] = entry["context_window"]
         else:
             continue
         if provider not in providers:
             raise ValueError(f"Model '{model_name}' maps to unknown provider '{provider}'")
         model_map[model_name] = provider
     cfg["_model_map"] = model_map
-    cfg["_context_windows"] = context_windows
     cfg["_aliases"] = cfg.get("aliases") or {}
     cfg["_default_provider"] = next(iter(providers))
     return cfg
@@ -181,43 +178,6 @@ async def _stream(resp: httpx.Response, model: str, provider_name: str):
         )
 
 
-def _synthetic_model(model_id: str, context_window: int) -> dict:
-    return {
-        "type": "model",
-        "id": model_id,
-        "display_name": model_id,
-        "created_at": "2025-01-01T00:00:00Z",
-        "context_window": context_window,
-    }
-
-
-@app.get("/v1/models/{model_id}")
-async def get_model(request: Request, model_id: str):
-    resolved = _cfg["_aliases"].get(model_id, model_id)
-    cw = _cfg["_context_windows"].get(resolved)
-    if cw is not None:
-        return JSONResponse(_synthetic_model(model_id, cw))
-    provider_name = _cfg["_model_map"].get(resolved, _cfg["_default_provider"])
-    provider_cfg = _cfg["providers"][provider_name]
-    headers = _headers_for_provider(request, provider_cfg)
-    resp = await _http.get(f"{provider_cfg['base_url']}/v1/models/{model_id}", headers=headers)
-    return JSONResponse(resp.json(), status_code=resp.status_code)
-
-
-@app.get("/v1/models")
-async def list_models(request: Request):
-    provider_cfg = _cfg["providers"][_cfg["_default_provider"]]
-    headers = _headers_for_provider(request, provider_cfg)
-    resp = await _http.get(f"{provider_cfg['base_url']}/v1/models", headers=headers)
-    data = resp.json()
-    existing_ids = {m["id"] for m in data.get("data", [])}
-    default_provider = _cfg["_default_provider"]
-    for model_id, cw in _cfg["_context_windows"].items():
-        if model_id not in existing_ids and _cfg["_model_map"].get(model_id) != default_provider:
-            data["data"].append(_synthetic_model(model_id, cw))
-    return JSONResponse(data, status_code=resp.status_code)
-
-
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"])
 async def proxy(request: Request, path: str):
     body = await request.body()
@@ -229,6 +189,8 @@ async def proxy(request: Request, path: str):
         try:
             data = json.loads(body)
             model = data.get("model", "unknown")
+            model = re.sub(r"\[1m\]$", "", model, flags=re.IGNORECASE)
+            data["model"] = model
             resolved = _cfg["_aliases"].get(model, model)
             if resolved != model:
                 data["model"] = resolved

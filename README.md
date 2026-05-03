@@ -53,18 +53,13 @@ providers:
 
 aliases:
   mimo-pro: mimo-v2.5-pro
-  mimo: mimo-v2.5
 
 models:
   claude-opus-4-7:           anthropic
   claude-sonnet-4-6:         anthropic
   claude-haiku-4-5-20251001: anthropic
-  mimo-v2.5-pro:
-    provider: xiaomi
-    context_window: 1000000
-  mimo-v2.5:
-    provider: xiaomi
-    context_window: 1000000
+  mimo-v2.5-pro:             xiaomi
+  mimo-v2.5:                 xiaomi
 ```
 
 ### Provider options
@@ -78,15 +73,6 @@ models:
 ### Models
 
 Map model names to provider keys. Unknown models fall through to the first provider.
-
-Use the expanded form to set a `context_window` override — useful when a provider doesn't implement `GET /v1/models` (the proxy synthesizes the response):
-
-```yaml
-models:
-  mimo-v2.5-pro:
-    provider: xiaomi
-    context_window: 1000000
-```
 
 ### Aliases
 
@@ -109,6 +95,19 @@ Claude Code lets you pick the model with `/model`. The name you type must match 
 ```
 
 To use a third-party model as the **default** (so you don't have to switch every session), put it first in the `models:` block — the proxy falls through to the first listed provider for any model it doesn't recognise.
+
+### 1M context window
+
+Claude Code hardcodes context window sizes by model name — only Claude models get 1M. Third-party models default to 200k regardless of their actual capacity.
+
+Use the `[1m]` suffix to tell Claude Code to use a 1M window. The proxy strips it before forwarding upstream:
+
+```
+/model mimo[1m]
+/model mimo-pro[1m]
+```
+
+Claude Code reads `[1m]` in the model name and sets the context window to 1M tokens. The proxy removes the suffix so the upstream API sees the real model name. Models without the suffix keep their default window (e.g. Haiku stays at 200k).
 
 Alternatively, override the model at startup:
 

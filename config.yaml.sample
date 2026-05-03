@@ -12,7 +12,6 @@ providers:
 
 aliases:
   mimo-pro: mimo-v2.5-pro
-  mimo: mimo-v2.5
 
 models:
   # Anthropic — forward as-is
@@ -21,10 +20,5 @@ models:
   claude-haiku-4-5-20251001: anthropic
 
   # Xiaomi — re-route with own api_key
-  # context_window overrides the value reported to Claude Code via /v1/models
-  mimo-v2.5-pro:
-    provider: xiaomi
-    context_window: 1000000
-  mimo-v2.5:
-    provider: xiaomi
-    context_window: 1000000
+  mimo-v2.5-pro:             xiaomi
+  mimo-v2.5:                 xiaomi
